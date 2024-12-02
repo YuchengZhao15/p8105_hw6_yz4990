@@ -2,7 +2,7 @@
 title: "p8105_hw6_yz4990"
 author: "Yucheng Zhao"
 date: "2024-12-02"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -10,17 +10,23 @@ library(tidyverse)
 ```
 
 
-The Washington Post has gathered data on homicides in 50 large U.S. cities and made the data available through a GitHub repository here. You can read their accompanying article here.
-
-Create a city_state variable (e.g. “Baltimore, MD”), and a binary variable indicating whether the homicide is solved. Omit cities Dallas, TX; Phoenix, AZ; and Kansas City, MO – these don’t report victim race. Also omit Tulsa, AL – this is a data entry mistake. For this problem, limit your analysis those for whom victim_race is white or black. Be sure that victim_age is numeric.
 ## Problem 1.
+```{r}
+
+```
+
+
+
+## Problem 2.
+data cleaning
 ```{r}
 homi_df = read_csv("./data/homicide-data.csv", 
                    na = c("NA", "Unknown", ""), 
                    ) |> 
   janitor::clean_names() |> 
   mutate(
-    city_state = paste(city, state, sep = ", ")
+    city_state = paste(city, state, sep = ", "),
+    resolved = as.numeric(disposition == "Closed by arrest")
     ) |> 
   filter(city != "Dallas", 
          city != "Phoenix",
@@ -30,33 +36,69 @@ homi_df = read_csv("./data/homicide-data.csv",
   drop_na(victim_age) |> 
   mutate(victim_age = as.numeric(victim_age))
 
-
+head(homi_df)
 ```
 
-
-
-# Problem 2. 
+logistic regression for binary variable "resolved"
 ```{r}
+balti_df = homi_df |> 
+  filter(city == "Baltimore")
 
+fit_logistic = 
+  balti_df |> 
+  glm(resolved ~ victim_age + victim_sex + victim_race, data = _, family = binomial()) 
+
+fit_logistic |> 
+  broom::tidy(conf.int = TRUE) |> 
+  filter(term == "victim_sexMale") |> 
+  mutate(OR = exp(estimate)) |>
+  select(term, OR, conf.low, conf.high) |> 
+  knitr::kable(digits = 3)
 ```
 
 
-
-
+glm for each city
 ```{r}
-
+results_df = homi_df |> 
+  group_by(city) |> 
+  nest() |> 
+  mutate(
+    model = purrr::map(data, \(x) glm(resolved ~ victim_age + victim_sex + victim_race, 
+                                          data = x, family = binomial())),
+    outputs = purrr::map(model, \(x) broom::tidy(x, conf.int = TRUE))
+    ) |> 
+  unnest(outputs) |> 
+  filter(term == "victim_sexMale") |> 
+  mutate(
+    OR = exp(estimate),
+    conf.low = exp(conf.low),
+    conf.high = exp(conf.high)
+    ) |>
+  select(term, OR, conf.low, conf.high)
+  
+knitr::kable(results_df, digits = 3)
 ```
 
 
-
-
+plot of the estimated ORs and CIs for each city
 ```{r}
-
+ggplot(results_df, aes(x = reorder(city, OR), y = OR)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  labs(
+    title = "Estimated Odds Ratios with Confidence Intervals by City",
+    x = "City",
+    y = "Odds Ratio"
+  ) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90)
+  )
+  
 ```
 
 
-
-
+## Problem 3.
 ```{r}
 
 ```
