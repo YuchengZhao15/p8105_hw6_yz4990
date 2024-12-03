@@ -8,14 +8,48 @@ output: github_document
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(modelr)
+set.seed(1)
 ```
 
 
 ## Problem 1.
 ```{r}
-
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
 ```
+bootstrap, confidence intervals for $R^2$ and $log(\beta_{1}\beta_{2})$
+```{r}
+log_ab = function(mod) {
+  a = broom::tidy(mod)$estimate[1]
+  b = broom::tidy(mod)$estimate[2]
+  return(log(a * b))
+}
 
+boot = weather_df |> 
+  modelr::bootstrap(n = 5000) |> 
+  mutate(
+    models = map(strap, \(df) lm(tmax ~ tmin, data = df) ),
+    r2 = map_dbl(models, \(mod) broom::glance(mod)$r.squared),
+    log_b1b2 = map_dbl(models, \(mod) log_ab(mod))
+  ) |> 
+  summarize(
+    r2_lo = quantile(r2, 0.025),
+    r2_up = quantile(r2, 0.975),
+    log_b1b2_lo = quantile(log_b1b2, 0.025),
+    log_b1b2_up = quantile(log_b1b2, 0.975)
+  )
+
+boot
+```
 
 
 ## Problem 2.
@@ -149,7 +183,7 @@ bw_df |>
 
 
 
-
+comparison of RMSE
 ```{r}
 cv_df = 
   crossv_mc(bw_df, 100) |> 
